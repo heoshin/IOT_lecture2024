@@ -1,0 +1,22 @@
+POST http://pcs.pah.kr:82/data
+content-type: application/json
+
+{
+    "mac_address": "00:1B:44:11:3A:B7",
+    "temperature": 25.5,
+    "humidity": 50.0,
+    "brightness": 75
+}
+
+###
+GET http://pcs.pah.kr:82/hardware
+
+###
+GET http://pcs.pah.kr:82/hardware/040a6ee3-af8c-4979-baf6-722ed3500da7
+
+###
+POST http://pcs.pah.kr:82/hardware/040a6ee3-af8c-4979-baf6-722ed3500da7
+content-type: application/json
+{
+    "name": "node-heoshin"
+}
