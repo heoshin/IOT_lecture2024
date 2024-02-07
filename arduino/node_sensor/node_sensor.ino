@@ -80,23 +80,25 @@ void loop()
       currentMillis = millis();
     }
     previousMillis = currentMillis;
+  }
 
-    // 센서 데이터 전송
-    SendSensorData(wifiClient);
-    // LED 제어
-    // const auto isSwitchOn = IsSwitchOnFromServer(wifiClient, HARDWARE_ID);
-    // if (isSwitchOn)
-    // {
-    //   digitalWrite(LED_BUILTIN, HIGH);
-    // }
-    // else
-    // {
-    //   digitalWrite(LED_BUILTIN, LOW);
-    // }
+  // 센서 데이터 전송
+  SendSensorData(wifiClient);
+  
+  // LED 제어
+  const auto isSwitchOn = IsSwitchOnFromServer(wifiClient, HARDWARE_ID);
+  Serial.printf("isSwitchOn: %d", isSwitchOn);
+  if (isSwitchOn)
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
+  else
+  {
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
-bool SendSensorData(WiFiClient wifiClient)
+bool SendSensorData(WiFiClient& wifiClient)
 {
   // 습도와 온도 읽기
   const float humidity = dht.readHumidity();
@@ -130,7 +132,7 @@ int IsSwitchOnFromServer(WiFiClient &wifiClient, const String& id)
   auto jsonData = HttpGet(wifiClient, requestUrl.c_str());
   if (jsonData.hasOwnProperty("switch_state"))
   {
-    const int isSwitchOn = jsonData["switch_state"];
+    const bool isSwitchOn = jsonData["switch_state"];
     return isSwitchOn == 1;
   }
   else
@@ -174,11 +176,10 @@ bool HttpPost(WiFiClient &wifiClient, const char *apiUrl, const JSONVar &jsonDat
   return httpCode == HTTP_CODE_OK;
 }
 
-JSONVar HttpGet(WiFiClient &wifiClient, const char *apiUrl)
+inline JSONVar HttpGet(WiFiClient &wifiClient, const char *apiUrl)
 {
   HTTPClient http;
-  JSONVar jsonResponse; // JSON 응답을 저장할 변수를 초기화합니다.
-
+  String payload;
   Serial.print("====[HTTP] GET====\n");
   http.begin(wifiClient, apiUrl); // HTTP 시작과 동시에 주어진 URL로 연결합니다.
 
@@ -190,18 +191,10 @@ JSONVar HttpGet(WiFiClient &wifiClient, const char *apiUrl)
 
     if (httpCode == HTTP_CODE_OK) // 서버로부터 200 OK 응답을 받았는지 확인합니다.
     {
-      String payload = http.getString(); // 응답 페이로드를 받습니다.
+      payload = http.getString(); // 응답 페이로드를 받습니다.
       Serial.println("===received payload===");
       Serial.println(payload);
       Serial.println("======================");
-
-      jsonResponse = JSON.parse(payload); // 페이로드를 JSON으로 파싱합니다.
-
-      if (JSON.typeof(jsonResponse) == "undefined") // JSON 파싱이 성공했는지 확인합니다.
-      {
-        Serial.println("Parsing input failed!");
-        return JSONVar(); // 파싱에 실패했다면 빈 JSONVar 객체를 반환합니다.
-      }
     }
   }
   else
@@ -210,7 +203,7 @@ JSONVar HttpGet(WiFiClient &wifiClient, const char *apiUrl)
   }
 
   http.end();          // HTTP 연결을 종료합니다.
-  return jsonResponse; // 파싱된 JSON 객체를 반환합니다.
+  return JSON.parse(payload); // 파싱된 JSON 객체를 반환합니다.
 }
 
 bool calculateBrightness(const int sensorValue, const int baseResistor, int &brightness)
