@@ -183,6 +183,45 @@ def update_hardware_name(mac_address):
     response = json.dumps({"message": "하드웨어 이름이 성공적으로 업데이트되었습니다."}, ensure_ascii=False)
     return Response(response, status=200, mimetype='application/json; charset=utf-8')
 
+@app.route('/control/<mac_address>', methods=['GET', 'POST'])
+def control_hardware(mac_address):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    if request.method == 'GET':
+        # 현재 스위치 상태 조회
+        cursor.execute('SELECT switch_state FROM hardware_control WHERE mac_address = ?', (mac_address,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row is None:
+            response = json.dumps({"message": "해당 MAC 주소를 가진 하드웨어가 없습니다."}, ensure_ascii=False)
+            return Response(response, status=404, mimetype='application/json; charset=utf-8')
+
+        # 현재 스위치 상태 반환
+        response = json.dumps({"mac_address": mac_address, "switch_state": row[0]}, ensure_ascii=False)
+        return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+    elif request.method == 'POST':
+        data = request.json
+        new_switch_state = data.get('switch_state')
+
+        if new_switch_state is None:
+            response = json.dumps({"message": "switch_state 값을 제공해야 합니다."}, ensure_ascii=False)
+            return Response(response, status=400, mimetype='application/json; charset=utf-8')
+
+        # 스위치 상태 업데이트
+        cursor.execute('INSERT OR REPLACE INTO hardware_control (mac_address, switch_state) VALUES (?, ?)', (mac_address, new_switch_state))
+        conn.commit()
+        conn.close()
+
+        response = json.dumps({"message": "Switch 상태가 성공적으로 업데이트되었습니다."}, ensure_ascii=False)
+        return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+    else:
+        conn.close()
+        return Response("Invalid Method", status=405)
+
 if __name__ == '__main__':
     init_db()
     app.run(host="0.0.0.0", port=82, debug=True)
