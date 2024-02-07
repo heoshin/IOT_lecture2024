@@ -69,6 +69,99 @@
       ]
   }
   ```
+`limit을 사용하여 가져올 데이터의 개수를 설정`
+- **요청 예시**:
+  ```http
+  GET /hardware/00:1B:44:11:3A:B7?limit=5
+  ```
+- **응답 예시**:
+  ```json
+  HTTP/1.1 200 OK
+  {
+      "name": "Living Room Sensor",
+      "data": [
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T15:26:33.123Z"
+          },
+          {
+              "temperature": 24.7,
+              "humidity": 35,
+              "brightness": 150,
+              "timestamp": "2024-02-05T14:26:33.123Z"
+          },
+          
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T15:26:33.123Z"
+          },
+          {
+              "temperature": 24.7,
+              "humidity": 35,
+              "brightness": 150,
+              "timestamp": "2024-02-05T14:26:33.123Z"
+          },
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T15:26:33.123Z"
+          }
+
+      ]
+  }
+  ```
+`시작 시간과 종료 시간을 설정하고 interval을 사용하여 원하는 시간 단위로 데이터를 가져옴`
+`interval 값:` second, minute, hour, day, month, year
+- **요청 예시**:
+  ```http
+  GET /hardware/00:1B:44:11:3A:B7?start_time=2024-02-01T00:00:00&end_time=2024-02-05T23:59:59?interval=hour
+  ```
+- **응답 예시**:
+  ```json
+  HTTP/1.1 200 OK
+  {
+      "name": "Living Room Sensor",
+      "data": [
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T15:00:00.000Z"
+          },
+          {
+              "temperature": 24.7,
+              "humidity": 35,
+              "brightness": 150,
+              "timestamp": "2024-02-05T16:00:00.000Z"
+          },
+          
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T17:00:00.000Z"
+          },
+          {
+              "temperature": 24.7,
+              "humidity": 35,
+              "brightness": 150,
+              "timestamp": "2024-02-05T18:00:00.000Z"
+          },
+          {
+              "temperature": 24.5,
+              "humidity": 30,
+              "brightness": 200,
+              "timestamp": "2024-02-05T19:00:00.000Z"
+          }
+      ]
+  }
+  ```
+
 
 ### 4. `/hardware/<mac_address>` (POST)
 
@@ -100,7 +193,7 @@
   HTTP/1.1 200 OK
   {
       "mac_address": "00:1B:44:11:3A:B7",
-      "switch_state": true
+      "switch_state": 1
   }
   ```
 
