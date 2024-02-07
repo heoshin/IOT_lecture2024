@@ -49,9 +49,14 @@ def init_db():
 def receive_data():
     data = request.json
     mac_address = data['mac_address']
-    temperature = data['temperature']
-    humidity = data['humidity']
-    brightness = data['brightness']
+    temperature = data.get('temperature')  # .get()을 사용하여 None 체크 가능
+    humidity = data.get('humidity')
+    brightness = data.get('brightness')
+
+    # temperature, humidity, brightness 중 하나라도 None이면 400 에러 반환
+    if temperature is None or humidity is None or brightness is None:
+        response = json.dumps({"message": "temperature, humidity, brightness 중 하나 이상의 값이 없습니다."}, ensure_ascii=False)
+        return Response(response, status=400, mimetype='application/json; charset=utf-8')
 
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -119,7 +124,7 @@ def get_sensor_data(mac_address):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # 데이터 집계 쿼리
+    # 데이터 집계 쿼리 수정: NULL 값을 제외하고 평균 계산
     query = f'''
     SELECT 
         strftime('{interval_format}', timestamp) as interval,
@@ -128,7 +133,10 @@ def get_sensor_data(mac_address):
         AVG(brightness) as avg_brightness
     FROM sensor_data
     WHERE 
-        mac_address = ?
+        mac_address = ? AND
+        temperature IS NOT NULL AND
+        humidity IS NOT NULL AND
+        brightness IS NOT NULL
     '''
     params = [mac_address]
 
