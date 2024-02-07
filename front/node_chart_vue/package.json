@@ -1,18 +1,22 @@
 {
   "name": "node_chart_vue",
-  "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "private": true,
   "scripts": {
-    "dev": "vite",
     "build": "vite build",
+    "dev": "vite --host 0.0.0.0 --port 8080",
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.3.11"
+    "apexcharts": "^3.45.2",
+    "axios": "^1.6.7",
+    "register-service-worker": "^1.7.2",
+    "vue": "^3.3.11",
+    "vue3-apexcharts": "^1.4.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.5.2",
     "vite": "^5.0.8"
-  }
+  },
+  "type": "module"
 }
