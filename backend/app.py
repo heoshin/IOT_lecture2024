@@ -1,33 +1,44 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response
 import sqlite3
 from datetime import datetime
-import uuid
+import json
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
+
 DATABASE_NAME = 'database.db'
 
 def init_db():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # 첫번째 테이블: 하드웨어ID, UUID, 이름
+    # 'hardware' 테이블 생성
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS hardware (
-        hardware_id TEXT PRIMARY KEY,
-        uuid TEXT UNIQUE,
+        mac_address TEXT PRIMARY KEY,
         name TEXT
     )
     ''')
 
-    # 두번째 테이블: 하드웨어UUID, 온도, 습도, 밝기, 시간
+    # 'sensor_data' 테이블 생성
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS sensor_data (
-        uuid TEXT,
+        mac_address TEXT,
         temperature REAL,
         humidity REAL,
         brightness REAL,
         timestamp DATETIME,
-        FOREIGN KEY (uuid) REFERENCES hardware(uuid)
+        FOREIGN KEY (mac_address) REFERENCES hardware(mac_address)
+    )
+    ''')
+
+    # 'hardware_control' 테이블 생성
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS hardware_control (
+        mac_address TEXT PRIMARY KEY,
+        switch_state BOOLEAN,
+        FOREIGN KEY (mac_address) REFERENCES hardware(mac_address)
     )
     ''')
 
@@ -37,32 +48,37 @@ def init_db():
 @app.route('/data', methods=['POST'])
 def receive_data():
     data = request.json
-    hardware_id = data['hardware_id']
-    temperature = data['temperature']
-    humidity = data['humidity']
-    brightness = data['brightness']
+    mac_address = data['mac_address']
+    temperature = data.get('temperature')  # .get()을 사용하여 None 체크 가능
+    humidity = data.get('humidity')
+    brightness = data.get('brightness')
+
+    # temperature, humidity, brightness 중 하나라도 None이면 400 에러 반환
+    if temperature is None or humidity is None or brightness is None:
+        response = json.dumps({"message": "temperature, humidity, brightness 중 하나 이상의 값이 없습니다."}, ensure_ascii=False)
+        return Response(response, status=400, mimetype='application/json; charset=utf-8')
 
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # 하드웨어ID가 있는지 확인하고 없으면 새 UUID를 생성
-    cursor.execute('SELECT uuid FROM hardware WHERE hardware_id = ?', (hardware_id,))
+    # 하드웨어 MAC 주소가 있는지 확인하고 없으면 새로운 하드웨어로 등록
+    cursor.execute('SELECT mac_address FROM hardware WHERE mac_address = ?', (mac_address,))
     row = cursor.fetchone()
     if row is None:
-        new_uuid = str(uuid.uuid4())
-        cursor.execute('INSERT INTO hardware (hardware_id, uuid) VALUES (?, ?)', (hardware_id, new_uuid))
-    else:
-        new_uuid = row[0]
+        cursor.execute('INSERT INTO hardware (mac_address) VALUES (?)', (mac_address,))
+        # 새 하드웨어에 대해 hardware_control 테이블에 switch_state를 false로 설정
+        cursor.execute('INSERT INTO hardware_control (mac_address, switch_state) VALUES (?, ?)', (mac_address, False))
 
     # 센서 데이터를 sensor_data 테이블에 저장
     timestamp = datetime.now()
-    cursor.execute('INSERT INTO sensor_data (uuid, temperature, humidity, brightness, timestamp) VALUES (?, ?, ?, ?, ?)',
-                   (new_uuid, temperature, humidity, brightness, timestamp))
+    cursor.execute('INSERT INTO sensor_data (mac_address, temperature, humidity, brightness, timestamp) VALUES (?, ?, ?, ?, ?)',
+                   (mac_address, temperature, humidity, brightness, timestamp))
 
     conn.commit()
     conn.close()
 
-    return jsonify({"message": "데이터가 성공적으로 수신되었습니다."}), 200
+    response = json.dumps({"message": "데이터가 성공적으로 수신되었습니다."}, ensure_ascii=False)
+    return Response(response, status=200, mimetype='application/json; charset=utf-8')
 
 @app.route('/hardware', methods=['GET'])
 def get_hardware():
@@ -73,55 +89,147 @@ def get_hardware():
     conn.close()
 
     # 결과를 JSON으로 변환
-    result = [{'hardware_id': row[0], 'uuid': row[1], 'name': row[2]} for row in rows]
-    return jsonify(result), 200
+    result = [{'mac_address': row[0], 'name': row[1]} for row in rows]
+    response = json.dumps(result, ensure_ascii=False)
+    return Response(response, status=200, mimetype='application/json; charset=utf-8')
 
-@app.route('/hardware/<hardware_uuid>', methods=['GET'])
-def get_sensor_data(hardware_uuid):
-    limit = request.args.get('limit', 10)
+@app.route('/hardware/<mac_address>', methods=['GET'])
+def get_sensor_data(mac_address):
+    start_time = request.args.get('start_time')  # 'YYYY-MM-DD HH:MM:SS' 형식, 선택적
+    end_time = request.args.get('end_time')  # 'YYYY-MM-DD HH:MM:SS' 형식, 선택적
+    interval = request.args.get('interval', 'second')  # 기본값은 'second'
+    limit = request.args.get('limit')  # 선택적
+
+    # 시작점과 끝점이 설정되어 있으면 limit을 사용하지 못하게 합니다.
+    if (start_time or end_time) and limit:
+        return Response("Cannot use 'limit' with 'start_time' or 'end_time'", status=400)
+
+    interval_formats = {
+        'second': '%Y-%m-%d %H:%M:%S',
+        'minute': '%Y-%m-%d %H:%M:00',
+        'hour': '%Y-%m-%d %H:00:00',
+        'day': '%Y-%m-%d 00:00:00',
+        'month': '%Y-%m-01 00:00:00',
+        'year': '%Y-01-01 00:00:00'
+    }
+
+    if interval not in interval_formats:
+        return Response("Invalid interval", status=400)
+
+    interval_format = interval_formats[interval]
+
+    # 끝 시간이 없으면 현재 시간을 사용합니다.
+    end_time = end_time or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # 첫 번째 테이블에서 하드웨어 이름 조회
-    cursor.execute('SELECT name FROM hardware WHERE uuid = ?', (hardware_uuid,))
-    hardware_name = cursor.fetchone()
-    
-    if not hardware_name:
-        return jsonify({"message": "해당 UUID를 가진 하드웨어가 없습니다."}), 404
+    # 데이터 집계 쿼리 수정: NULL 값을 제외하고 평균 계산
+    query = f'''
+    SELECT 
+        strftime('{interval_format}', timestamp) as interval,
+        AVG(temperature) as avg_temperature,
+        AVG(humidity) as avg_humidity,
+        AVG(brightness) as avg_brightness
+    FROM sensor_data
+    WHERE 
+        mac_address = ? AND
+        temperature IS NOT NULL AND
+        humidity IS NOT NULL AND
+        brightness IS NOT NULL
+    '''
+    params = [mac_address]
 
-    # 두 번째 테이블에서 센서 데이터 조회, 최신 데이터가 먼저 나오도록 내림차순 정렬
-    cursor.execute('SELECT temperature, humidity, brightness, timestamp FROM sensor_data WHERE uuid = ? ORDER BY timestamp DESC LIMIT ?', (hardware_uuid, limit))
+    # 시작 시간과 끝 시간 조건을 쿼리에 추가
+    if start_time:
+        query += ' AND timestamp >= ?'
+        params.append(start_time)
+    query += ' AND timestamp <= ?'
+    params.append(end_time)
+
+    query += f' GROUP BY interval ORDER BY interval ASC'
+
+    # limit이 설정되어 있으면 쿼리에 추가합니다.
+    if limit:
+        query += ' LIMIT ?'
+        params.append(limit)
+
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
 
     # 결과를 JSON으로 변환
     result = {
-        'name': hardware_name[0],
-        'data': [{'temperature': row[0], 'humidity': row[1], 'brightness': row[2], 'timestamp': row[3]} for row in rows]
+        'mac_address': mac_address,
+        'data': [{'timestamp': row[0], 'temperature': round(row[1], 1), 'humidity': round(row[2], 1), 'brightness': int(row[3])} for row in rows]
     }
-    return jsonify(result), 200
 
-@app.route('/hardware/<hardware_uuid>', methods=['POST'])
-def update_hardware_name(hardware_uuid):
+    response = json.dumps(result, ensure_ascii=False)
+    return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+@app.route('/hardware/<mac_address>', methods=['POST'])
+def update_hardware_name(mac_address):
     data = request.json
     name = data.get('name')
     
     if not name:
-        return jsonify({"message": "이름을 제공해야 합니다."}), 400
+        response = json.dumps({"message": "이름을 제공해야 합니다."}, ensure_ascii=False)
+        return Response(response, status=400, mimetype='application/json; charset=utf-8')
 
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    cursor.execute('UPDATE hardware SET name = ? WHERE uuid = ?', (name, hardware_uuid))
+    cursor.execute('UPDATE hardware SET name = ? WHERE mac_address = ?', (name, mac_address))
     affected_rows = cursor.rowcount
     conn.commit()
     conn.close()
 
     if affected_rows == 0:
-        return jsonify({"message": "해당 UUID를 가진 하드웨어가 없습니다."}), 404
+        response = json.dumps({"message": "해당 MAC 주소를 가진 하드웨어가 없습니다."}, ensure_ascii=False)
+        return Response(response, status=404, mimetype='application/json; charset=utf-8')
 
-    return jsonify({"message": "하드웨어 이름이 성공적으로 업데이트되었습니다."}), 200
+    response = json.dumps({"message": "하드웨어 이름이 성공적으로 업데이트되었습니다."}, ensure_ascii=False)
+    return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+@app.route('/control/<mac_address>', methods=['GET', 'POST'])
+def control_hardware(mac_address):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    if request.method == 'GET':
+        # 현재 스위치 상태 조회
+        cursor.execute('SELECT switch_state FROM hardware_control WHERE mac_address = ?', (mac_address,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row is None:
+            response = json.dumps({"message": "해당 MAC 주소를 가진 하드웨어가 없습니다."}, ensure_ascii=False)
+            return Response(response, status=404, mimetype='application/json; charset=utf-8')
+
+        # 현재 스위치 상태 반환
+        response = json.dumps({"mac_address": mac_address, "switch_state": row[0]}, ensure_ascii=False)
+        return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+    elif request.method == 'POST':
+        data = request.json
+        new_switch_state = data.get('switch_state')
+
+        if new_switch_state is None:
+            response = json.dumps({"message": "switch_state 값을 제공해야 합니다."}, ensure_ascii=False)
+            return Response(response, status=400, mimetype='application/json; charset=utf-8')
+
+        # 스위치 상태 업데이트
+        cursor.execute('INSERT OR REPLACE INTO hardware_control (mac_address, switch_state) VALUES (?, ?)', (mac_address, new_switch_state))
+        conn.commit()
+        conn.close()
+
+        response = json.dumps({"message": "Switch 상태가 성공적으로 업데이트되었습니다."}, ensure_ascii=False)
+        return Response(response, status=200, mimetype='application/json; charset=utf-8')
+
+    else:
+        conn.close()
+        return Response("Invalid Method", status=405)
 
 if __name__ == '__main__':
     init_db()
-    app.run(host="0.0.0.0", port=81, debug=True)
+    app.run(host="0.0.0.0", port=82, debug=True)
