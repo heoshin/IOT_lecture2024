@@ -13,24 +13,32 @@ def init_db():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # 첫번째 테이블: 하드웨어ID, UUID, 이름
+    # 'hardware' 테이블 생성
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS hardware (
-        hardware_id TEXT PRIMARY KEY,
-        uuid TEXT UNIQUE,
+        mac_address TEXT PRIMARY KEY,
         name TEXT
     )
     ''')
 
-    # 두번째 테이블: 하드웨어UUID, 온도, 습도, 밝기, 시간
+    # 'sensor_data' 테이블 생성
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS sensor_data (
-        uuid TEXT,
+        mac_address TEXT,
         temperature REAL,
         humidity REAL,
         brightness REAL,
         timestamp DATETIME,
-        FOREIGN KEY (uuid) REFERENCES hardware(uuid)
+        FOREIGN KEY (mac_address) REFERENCES hardware(mac_address)
+    )
+    ''')
+
+    # 'hardware_control' 테이블 생성
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS hardware_control (
+        mac_address TEXT PRIMARY KEY,
+        switch_state BOOLEAN,
+        FOREIGN KEY (mac_address) REFERENCES hardware(mac_address)
     )
     ''')
 
