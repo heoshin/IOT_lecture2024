@@ -23,7 +23,7 @@ void loop()
 
   // 조도 센서 읽기
   const int sensorValue = analogRead(A0);
-  const int brightness = calculateBrightness(sensorValue, BASE_RESISTOR);
+  int brightness = calculateBrightness(sensorValue, BASE_RESISTOR);
 
   // 센서 오류 처리
   if (brightness == -1)
